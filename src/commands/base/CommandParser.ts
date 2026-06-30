@@ -75,6 +75,9 @@ export function parseArgs(args: string[]): CommandArgs {
         positionalArgs: [],
     };
 
+    // Flags that always require a value (never boolean)
+    const valueRequiredFlags = ["m", "message", "author", "date", "format", "C", "D", "F", "p", "u"];
+
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
 
@@ -123,6 +126,19 @@ export function parseArgs(args: string[]): CommandArgs {
                 // Check if this is a boolean flag
                 if (booleanSingleFlags.includes(flag)) {
                     result.flags[flag] = true;
+                    continue;
+                }
+
+                // Check if this flag requires a value
+                if (valueRequiredFlags.includes(flag)) {
+                    const nextArg = i + 1 < args.length ? args[i + 1] : undefined;
+                    if (nextArg !== undefined && !nextArg.startsWith("-")) {
+                        result.flags[flag] = nextArg;
+                        i++;
+                    } else {
+                        // Flag requires value but didn't get one - set to empty string to signal incomplete command
+                        result.flags[flag] = "";
+                    }
                     continue;
                 }
 

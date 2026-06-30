@@ -145,6 +145,11 @@ export class BranchCommand implements Command {
     }
 
     private createBranch(gitRepository: GitRepository, branchName: string, startPoint?: string): string[] {
+        // Validate branch name before attempting to create
+        if (!this.isValidBranchName(branchName)) {
+            return [`fatal: '${branchName}' is not a valid branch name. Branch names cannot contain spaces, or special characters: ~ ^ : [ \\ *`];
+        }
+
         const allBranches = gitRepository.getBranches();
 
         // Check if branch already exists
@@ -164,6 +169,20 @@ export class BranchCommand implements Command {
         } else {
             return [`fatal: Failed to create branch '${branchName}'.`];
         }
+    }
+
+    private isValidBranchName(name: string): boolean {
+        // Branch name cannot be empty
+        if (!name || name.length === 0) return false;
+        // Cannot contain spaces
+        if (name.includes(" ")) return false;
+        // Cannot contain special characters that Git doesn't allow: ~ ^ : [ \ *
+        if (/[\s~^:\[\\\*]/.test(name)) return false;
+        // Cannot start or end with a dot
+        if (name.startsWith(".") || name.endsWith(".")) return false;
+        // Cannot be "." or ".."
+        if (name === "." || name === "..") return false;
+        return true;
     }
 
     private deleteBranch(gitRepository: GitRepository, branchName: string, isForce: boolean): string[] {

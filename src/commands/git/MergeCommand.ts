@@ -61,6 +61,18 @@ export class MergeCommand implements Command {
             const mergeResult = gitRepository.merge(targetBranch);
 
             if (!mergeResult.success) {
+                // Check if merge failed due to conflicts
+                if (mergeResult.conflictFiles && mergeResult.conflictFiles.length > 0) {
+                    const conflictOutput = [
+                        `Auto-merging ${mergeResult.filesChanged.join(", ")}`,
+                        `CONFLICT (content): Merge conflict in ${mergeResult.conflictFiles.join(", ")}`,
+                        `Automatic merge failed; fix conflicts and then commit the result.`,
+                        ``,
+                        `Conflicts:`,
+                        ...mergeResult.conflictFiles.map(file => `\t${file}`),
+                    ];
+                    return conflictOutput;
+                }
                 return [
                     `Auto-merging failed. Fix conflicts and then commit the result.`,
                     `Automatic merge failed; fix conflicts and then commit the result.`,

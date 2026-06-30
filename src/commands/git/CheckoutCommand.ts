@@ -85,11 +85,11 @@ export class CheckoutCommand implements Command {
 
         // Handle branch switching
         if (!branches.includes(branchName)) {
-            // More helpful error message
+            // More helpful error message with case-sensitive suggestions
             const similarBranches = branches.filter(
                 b =>
-                    b.toLowerCase().includes(branchName.toLowerCase()) ||
-                    branchName.toLowerCase().includes(b.toLowerCase()),
+                    b.includes(branchName) ||
+                    branchName.includes(b),
             );
 
             let errorMsg = `error: pathspec '${branchName}' did not match any file(s) known to git`;

@@ -31,6 +31,12 @@ export class GitRepository {
         index: number;
     }> = [];
 
+    // Track merge conflict state
+    private mergeConflictState: {
+        sourceBranch: string;
+        conflictFiles: string[];
+    } | null = null;
+
     // Enhanced branch-specific states
     private branchStates: Record<
         string,
@@ -368,6 +374,8 @@ export class GitRepository {
     }
 
     public createBranch(name: string): boolean {
+        // Validate branch name - Git branch names cannot contain spaces or certain special characters
+        if (!this.isValidBranchName(name)) return false;
         if (!this.initialized || this.branches.includes(name)) return false;
 
         this.branches.push(name);
@@ -402,6 +410,21 @@ export class GitRepository {
             };
         }
 
+        return true;
+    }
+
+    // Validate branch name according to Git rules
+    private isValidBranchName(name: string): boolean {
+        // Branch name cannot be empty
+        if (!name || name.length === 0) return false;
+        // Cannot contain spaces
+        if (name.includes(" ")) return false;
+        // Cannot contain special characters that Git doesn't allow: ~ ^ : [ \ *
+        if (/[\s~^:\[\\\*]/.test(name)) return false;
+        // Cannot start or end with a dot
+        if (name.startsWith(".") || name.endsWith(".")) return false;
+        // Cannot be "." or ".."
+        if (name === "." || name === "..") return false;
         return true;
     }
 
@@ -653,7 +676,9 @@ export class GitRepository {
         }
 
         // Regular merge (create merge commit)
-        // Merge target branch files into current branch
+        // Detect conflicts and merge target branch files into current branch
+        const conflictFiles: string[] = [];
+        
         Object.entries(targetBranchState.files).forEach(([filePath, content]) => {
             const fullPath = filePath.startsWith("/") ? filePath : `/${filePath}`;
 
@@ -666,12 +691,36 @@ export class GitRepository {
                 this.fileSystem.writeFile(fullPath, content);
                 filesChanged.push(filePath);
             } else if (currentContent !== content) {
-                // File exists but differs - take target version (simplified, no conflict detection)
-                currentBranchState.files[filePath] = content;
-                this.fileSystem.writeFile(fullPath, content);
+                // File exists but differs in both branches - CONFLICT
+                conflictFiles.push(filePath);
                 filesChanged.push(filePath);
+                
+                // Mark file as modified with both versions
+                this.status[filePath] = "modified";
+                currentBranchState.status[filePath] = "modified";
+                
+                // Write conflict markers to working directory
+                const conflictContent = 
+                    `<<<<<<< HEAD\n${currentContent}\n=======\n${content}\n>>>>>>> ${branch}`;
+                this.fileSystem.writeFile(fullPath, conflictContent);
             }
         });
+
+        // If there are conflicts, return conflict state without creating merge commit
+        if (conflictFiles.length > 0) {
+            // Store current merge state for conflict resolution
+            this.mergeConflictState = {
+                sourceBranch: branch,
+                conflictFiles: conflictFiles,
+            };
+            
+            return { 
+                success: false, 
+                isFastForward: false, 
+                filesChanged,
+                conflictFiles,
+            };
+        }
 
         // Merge commits from target branch
         targetBranchState.commits.forEach(commitId => {
@@ -944,8 +993,9 @@ export class GitRepository {
             this.pushedCommits.add(commitId);
         }
 
-        // Set upstream tracking if requested or if pushing to remote for first time
-        if (setUpstream || !this.upstreamBranches[branch]) {
+        // Set upstream tracking only if explicitly requested with -u or --set-upstream flag
+        // Do not auto-set upstream on regular push (respects Git semantics)
+        if (setUpstream) {
             this.upstreamBranches[branch] = { remote, branch };
         }
 
@@ -1100,9 +1150,25 @@ export class GitRepository {
         this.stash = [];
         this.pushedCommits = new Set();
         this.upstreamBranches = {};
+        this.mergeConflictState = null;  // Clear merge conflict state
         this.branchStates = {
             main: { files: {}, status: {}, commits: [], workingDirectory: {} },
         };
+    }
+
+    // Check if there are unresolved merge conflicts
+    public hasMergeConflicts(): boolean {
+        return this.mergeConflictState !== null;
+    }
+
+    // Get current merge conflict state
+    public getMergeConflictState(): { sourceBranch: string; conflictFiles: string[] } | null {
+        return this.mergeConflictState;
+    }
+
+    // Clear merge conflict state (after conflicts are resolved)
+    public clearMergeConflicts(): void {
+        this.mergeConflictState = null;
     }
 
     // Mock remote commits for pull simulation

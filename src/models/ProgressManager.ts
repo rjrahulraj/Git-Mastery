@@ -26,6 +26,11 @@ export class ProgressManager {
         }
 
         // Migration for existing users who don't have the new properties
+        if (!this.progress) {
+            console.error("Progress not initialized properly");
+            return;
+        }
+
         if (!this.progress.purchasedItems) {
             this.progress.purchasedItems = [];
         }
@@ -35,13 +40,13 @@ export class ProgressManager {
         if (!this.progress.minigameScores) {
             this.progress.minigameScores = {};
         }
-        if (!this.progress.hasOwnProperty('doubleXpUntil')) {
+        if (this.progress.doubleXpUntil === undefined || this.progress.doubleXpUntil === null) {
             this.progress.doubleXpUntil = null;
         }
-        if (!this.progress.hasOwnProperty('gitGudActivated')) {
+        if (this.progress.gitGudActivated === undefined) {
             this.progress.gitGudActivated = false;
         }
-        if (!this.progress.hasOwnProperty('coins')) {
+        if (!this.progress.coins) {
             // Migration: existing users get coins equal to their score
             this.progress.coins = this.progress.score || 0;
         }
@@ -179,19 +184,41 @@ export class ProgressManager {
     // Save progress to localStorage
     private saveProgress(): void {
         if (typeof window !== "undefined") {
-            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.progress));
+            try {
+                localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.progress));
+            } catch (error) {
+                // Handle localStorage quota exceeded or other errors
+                if (error instanceof Error) {
+                    if (error.name === "QuotaExceededError" || error.name === "NS_ERROR_DOM_QUOTA_REACHED") {
+                        console.warn("localStorage quota exceeded. Game progress may not persist.", error);
+                    } else if (error.name === "SecurityError") {
+                        console.warn("localStorage access denied (possibly private browsing). Game progress will not persist.", error);
+                    } else {
+                        console.error("Failed to save progress:", error);
+                    }
+                }
+            }
         }
     }
 
     // Load progress from localStorage
     private loadProgress(): UserProgress | null {
         if (typeof window !== "undefined") {
-            const savedData = localStorage.getItem(this.STORAGE_KEY);
-            if (savedData) {
-                try {
+            try {
+                const savedData = localStorage.getItem(this.STORAGE_KEY);
+                if (savedData) {
                     return JSON.parse(savedData) as UserProgress;
-                } catch (e) {
-                    console.error("Failed to parse saved progress", e);
+                }
+            } catch (error) {
+                // Handle both parse errors and access errors
+                if (error instanceof Error) {
+                    if (error.name === "SyntaxError") {
+                        console.error("Failed to parse saved progress (corrupted data)", error);
+                    } else if (error.name === "SecurityError") {
+                        console.warn("localStorage access denied (possibly private browsing).");
+                    } else {
+                        console.error("Failed to load progress:", error);
+                    }
                 }
             }
         }

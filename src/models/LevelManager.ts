@@ -35,9 +35,13 @@ export class LevelManager {
                 this.setupDefaultFileStructure(fileSystem);
             }
 
-            // Set up git state if provided
+            // Set up git state if provided - check for success
             if (level.initialState?.git) {
-                this.setupGitState(gitRepository, fileSystem, level.initialState.git);
+                const gitSetupSuccess = this.setupGitState(gitRepository, fileSystem, level.initialState.git);
+                if (!gitSetupSuccess) {
+                    console.error(`Failed to setup git state for level ${stageId}-${levelId}`);
+                    return false;
+                }
             }
 
             return true;
@@ -83,66 +87,87 @@ export class LevelManager {
     }
 
     // Set up git state based on configuration
-    private setupGitState(gitRepository: GitRepository, fileSystem: FileSystem, gitState: GitState): void {
-        // Initialize git if specified
-        if (gitState.initialized) {
-            gitRepository.init();
+    private setupGitState(gitRepository: GitRepository, fileSystem: FileSystem, gitState: GitState): boolean {
+        try {
+            // Initialize git if specified
+            if (gitState.initialized) {
+                gitRepository.init();
 
-            // Add a default remote if none specified
-            const remotes = gitRepository.getRemotes();
-            if (Object.keys(remotes).length === 0) {
-                gitRepository.addRemote("origin", "https://github.com/user/repo.git");
-            }
-
-            // Create branches if specified
-            if (gitState.branches) {
-                for (const branch of gitState.branches) {
-                    gitRepository.createBranch(branch);
+                // Add a default remote if none specified
+                const remotes = gitRepository.getRemotes();
+                if (Object.keys(remotes).length === 0) {
+                    gitRepository.addRemote("origin", "https://github.com/user/repo.git");
                 }
-            }
 
-            // Create commits if specified
-            if (gitState.commits) {
-                for (const commit of gitState.commits) {
-                    // Switch branch BEFORE committing if needed
-                    if (commit.branch && commit.branch !== gitRepository.getCurrentBranch()) {
-                        gitRepository.checkout(commit.branch);
+                // Create branches if specified
+                if (gitState.branches) {
+                    for (const branch of gitState.branches) {
+                        if (!gitRepository.createBranch(branch)) {
+                            console.warn(`Failed to create branch: ${branch}`);
+                            return false;
+                        }
                     }
+                }
 
-                    // Only commit if there's a message (empty message = just switch branch)
-                    if (commit.message) {
-                        // Stage files for this commit
-                        for (const filePath of commit.files) {
-                            gitRepository.addFile(filePath);
+                // Create commits if specified
+                if (gitState.commits) {
+                    for (const commit of gitState.commits) {
+                        // Switch branch BEFORE committing if needed
+                        if (commit.branch && commit.branch !== gitRepository.getCurrentBranch()) {
+                            const checkoutResult = gitRepository.checkout(commit.branch);
+                            if (!checkoutResult.success) {
+                                console.warn(`Failed to checkout branch: ${commit.branch}`);
+                                return false;
+                            }
                         }
 
-                        // Commit the changes
-                        gitRepository.commit(commit.message);
+                        // Only commit if there's a message (empty message = just switch branch)
+                        if (commit.message) {
+                            // Stage files for this commit
+                            for (const filePath of commit.files) {
+                                gitRepository.addFile(filePath);
+                            }
+
+                            // Commit the changes
+                            const commitId = gitRepository.commit(commit.message);
+                            if (!commitId) {
+                                console.warn(`Failed to create commit: ${commit.message}`);
+                                return false;
+                            }
+                        }
+                    }
+                }
+
+                // Create merge conflicts if specified
+                if (gitState.mergeConflicts) {
+                    this.setupMergeConflicts(gitRepository, fileSystem, gitState.mergeConflicts);
+                }
+
+                // Switch to the specified branch if provided
+                if (gitState.currentBranch) {
+                    const checkoutResult = gitRepository.checkout(gitState.currentBranch);
+                    if (!checkoutResult.success) {
+                        console.warn(`Failed to checkout final branch: ${gitState.currentBranch}`);
+                        return false;
+                    }
+                }
+
+                // Apply file changes to create modified/untracked/deleted files
+                if (gitState.fileChanges) {
+                    this.applyFileChanges(gitRepository, fileSystem, gitState.fileChanges);
+                }
+
+                // Set up remote commits if specified
+                if (gitState.remoteCommits) {
+                    for (const remoteCommitSet of gitState.remoteCommits) {
+                        gitRepository.setRemoteCommits(remoteCommitSet.branch, remoteCommitSet.commits);
                     }
                 }
             }
-
-            // Create merge conflicts if specified
-            if (gitState.mergeConflicts) {
-                this.setupMergeConflicts(gitRepository, fileSystem, gitState.mergeConflicts);
-            }
-
-            // Switch to the specified branch if provided
-            if (gitState.currentBranch) {
-                gitRepository.checkout(gitState.currentBranch);
-            }
-
-            // Apply file changes to create modified/untracked/deleted files
-            if (gitState.fileChanges) {
-                this.applyFileChanges(gitRepository, fileSystem, gitState.fileChanges);
-            }
-
-            // Set up remote commits if specified
-            if (gitState.remoteCommits) {
-                for (const remoteCommitSet of gitState.remoteCommits) {
-                    gitRepository.setRemoteCommits(remoteCommitSet.branch, remoteCommitSet.commits);
-                }
-            }
+            return true;
+        } catch (error) {
+            console.error("Error during git state setup:", error);
+            return false;
         }
     }
 

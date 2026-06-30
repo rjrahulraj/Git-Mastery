@@ -11,6 +11,15 @@ export class FileSystem {
         };
     }
 
+    // Reset the file system to empty state (clears all files and directories except root)
+    public reset(): void {
+        this.root = {
+            type: "directory",
+            name: "/",
+            children: {},
+        };
+    }
+
     // Get the contents of a directory
     public getDirectoryContents(path: string): Record<string, FileSystemItem> | null {
         const item = this.getItemAtPath(path);
@@ -89,16 +98,21 @@ export class FileSystem {
         for (const part of parts) {
             if (!currentDir.children) currentDir.children = {};
 
+            // If entry doesn't exist, create it as a directory
             if (!currentDir.children[part]) {
                 currentDir.children[part] = {
                     type: "directory",
                     name: part,
                     children: {},
                 };
+            } else {
+                // Entry exists - check that it's a directory before descending
+                if (currentDir.children[part].type !== "directory") {
+                    return false; // Can't create directory under a file
+                }
             }
 
             currentDir = currentDir.children[part];
-            if (currentDir.type !== "directory") return false;
         }
 
         return true;

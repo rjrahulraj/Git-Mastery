@@ -8,6 +8,7 @@ import { LevelManager } from "~/models/LevelManager";
 import { ProgressManager } from "~/models/ProgressManager";
 import { GitRepository } from "~/models/GitRepository";
 import { splitCommandRespectingQuotes } from "~/commands/base/CommandParser";
+import { resolvePath } from "~/lib/utils";
 import type { GameContextProps, DifficultyLevel } from "~/types";
 import { useLanguage } from "~/contexts/LanguageContext";
 import { useSoundManager } from "~/lib/SoundManager";
@@ -134,6 +135,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const output = commandProcessor.processCommand(`git commit -m "${escapedMessage}"`);
         setTerminalOutput(prev => [...prev, ...output]);
 
+        // Close the dialog after committing
+        closeCommitDialog();
+
         // Check for level completion after dialog commit (only if not in playground mode)
         if (typeof window !== "undefined" && !window.location.pathname.includes("/playground")) {
             const [cmd, ...args] = splitCommandRespectingQuotes(`git commit -m "${escapedMessage}"`.trim());
@@ -155,6 +159,18 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 !pathname.includes("/installation") &&
                 !pathname.includes("/impressum")
             ) {
+                // Validate that current stage and level are valid before updating URL
+                const stage = levelManager.getStage(currentStage);
+                if (!stage) {
+                    console.warn(`Invalid stage: ${currentStage}`);
+                    return;  // Don't update URL if stage is invalid
+                }
+
+                if (currentLevel < 1) {
+                    console.warn(`Invalid level: ${currentLevel}`);
+                    return;  // Don't update URL if level is invalid
+                }
+
                 const currentParams = new URLSearchParams(window.location.search);
                 const currentStageParam = currentParams.get("stage");
                 const currentLevelParam = currentParams.get("level");
@@ -167,16 +183,15 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
             }
         }
-    }, [currentStage, currentLevel, router]);
+    }, [currentStage, currentLevel, router, levelManager]);
 
     // Add a function to reset terminal for playground mode
     const resetTerminalForPlayground = () => {
         // First reset the git repository to ensure a clean state
         gitRepository.reset();
 
-        // Reset the file system to initial state
-        // This is a simple approach - you might want to implement a proper reset method in FileSystem class
-        fileSystem.mkdir("/");
+        // Completely clear the file system and rebuild it with fresh state
+        fileSystem.reset();
         fileSystem.writeFile("/README.md", "# Git Learning Game\n\nWelcome to the Git learning game!");
         fileSystem.mkdir("/src");
         fileSystem.writeFile("/src/index.js", 'console.log("Hello, Git!");');
@@ -273,15 +288,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const output = commandProcessor.processCommand(command);
             setTerminalOutput(prev => [...prev, ...output]);
 
-            // Check for level completion regardless of dialog opening
-            if (!isPlaygroundMode) {
-                const [cmd, ...args] = splitCommandRespectingQuotes(command.trim());
-                if (cmd && levelManager.checkLevelCompletion(currentStage, currentLevel, cmd, args, gitRepository)) {
-                    markLevelAsCompleted();
-                }
-            }
-
             // Only open commit dialog if there are staged changes (output is empty)
+            // Level completion check will happen in handleCommit() after user provides the message
             if (output.length === 0 || !output[0]?.includes("Nothing to commit")) {
                 openCommitDialog();
             }
@@ -446,13 +454,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Handle file edit (for nano command)
     const handleFileEdit = (path: string, content: string) => {
-        // Normalize the path to handle potential double slashes
-        const normalizedPath = path.replace(/\/+/g, "/");
-
-        // Determine full path if needed
-        const fullPath = normalizedPath.startsWith("/")
-            ? normalizedPath
-            : `${commandProcessor.getCurrentDirectory()}/${normalizedPath}`.replace(/\/+/g, "/");
+        // Use resolvePath for consistent and complete path normalization
+        // This handles ./, ../, double slashes, and relative paths properly
+        const currentDir = commandProcessor.getCurrentDirectory();
+        const fullPath = resolvePath(path, currentDir);
 
         // Write the file
         fileSystem.writeFile(fullPath, content);
@@ -464,7 +469,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         gitRepository.updateFileStatus(gitPath, "modified");
 
         // Only add one message to terminal output
-        setTerminalOutput(prev => [...prev, t("terminal.fileSaved").replace("{path}", normalizedPath)]);
+        setTerminalOutput(prev => [...prev, t("terminal.fileSaved").replace("{path}", path)]);
 
         // Check state-based requirements (like file modified checks)
         if (levelManager.checkStateBasedRequirements(currentStage, currentLevel, gitRepository, fileSystem)) {

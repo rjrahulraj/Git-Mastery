@@ -29,7 +29,8 @@ export class CommandRegistry {
         // Wenn nicht gefunden, versuche Aliase
         if (!cmd && this.aliases.has(command)) {
             const mainCommandName = this.aliases.get(command);
-            if (mainCommandName) {
+            // Explicitly check for undefined and validate that the resolved command exists
+            if (mainCommandName !== undefined && this.commands.has(mainCommandName)) {
                 cmd = this.commands.get(mainCommandName);
             }
         }

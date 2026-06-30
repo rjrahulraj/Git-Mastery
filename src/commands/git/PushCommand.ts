@@ -22,8 +22,8 @@ export class PushCommand implements Command {
             return ["Not a git repository. Run 'git init' first."];
         }
 
-        // Check for --tags flag
-        const pushAllTags = args.flags.tags !== undefined || args.flags["--tags"] !== undefined;
+        // Check for --tags flag (CommandParser strips -- prefix, so check only 'tags')
+        const pushAllTags = args.flags.tags !== undefined;
 
         // Default values
         let remote = "origin";

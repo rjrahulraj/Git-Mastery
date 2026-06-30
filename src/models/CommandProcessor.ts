@@ -23,8 +23,13 @@ export class CommandProcessor {
             gitRepository: this.gitRepository,
             currentDirectory: this.currentDirectory,
             setCurrentDirectory: (dir: string) => {
-                if (this.fileSystem.getDirectoryContents(dir)) {
+                // Validate directory exists and is actually a directory
+                const dirContents = this.fileSystem.getDirectoryContents(dir);
+                if (dirContents !== null) {
                     this.currentDirectory = dir;
+                } else {
+                    // Silently fail for now (matches git behavior when cd fails in a non-interactive context)
+                    console.warn(`Directory not found: ${dir}`);
                 }
             },
             progressManager: this.progressManager,
@@ -39,11 +44,14 @@ export class CommandProcessor {
         return this.currentDirectory;
     }
 
-    // Set current directory (rarely used externally)
-    public setCurrentDirectory(dir: string): void {
-        if (this.fileSystem.getDirectoryContents(dir)) {
+    // Set current directory with validation
+    public setCurrentDirectory(dir: string): boolean {
+        const dirContents = this.fileSystem.getDirectoryContents(dir);
+        if (dirContents !== null) {
             this.currentDirectory = dir;
+            return true;
         }
+        return false;
     }
 
     // Helper method for Terminal tab completion

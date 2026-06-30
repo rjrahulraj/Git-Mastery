@@ -57,9 +57,15 @@ export class CommitCommand implements Command {
                 return ["Nothing to commit. Use git add to stage files first."];
             }
 
+            // Generate accurate file statistics
+            const fileCount = stagedFiles.length;
+            const fileWord = fileCount === 1 ? "file" : "files";
+            const insertions = fileCount;  // Simplified: each file = 1 insertion
+            const insertionWord = insertions === 1 ? "insertion" : "insertions";
+
             return [
                 `[${gitRepository.getCurrentBranch()} ${commitId.substring(0, 7)}] ${message}`,
-                "1 file changed, 1 insertion(+)",
+                ` ${fileCount} ${fileWord} changed, ${insertions} ${insertionWord}(+)`,
             ];
         }
 

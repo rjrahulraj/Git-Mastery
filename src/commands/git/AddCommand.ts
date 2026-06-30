@@ -35,7 +35,7 @@ export class AddCommand implements Command {
                     continue;
                 }
 
-                // Normalize path for consistency - remove leading slash
+                // Normalize path consistently - remove leading slash
                 const normalizedPath = file.startsWith("/") ? file.substring(1) : file;
 
                 // Get file status - files without status are treated as untracked
@@ -58,10 +58,11 @@ export class AddCommand implements Command {
 
             return [`Added ${stagedFiles.length} files to staging area.`];
         } else {
-            // Handle specific files
+            // Handle specific files - use consistent path normalization
             const results: string[] = [];
 
             for (const argPath of args.positionalArgs) {
+                // Use resolvePath for consistent path resolution
                 const filePath = resolvePath(argPath, context.currentDirectory);
 
                 if (fileSystem.getFileContents(filePath) === null) {
@@ -69,7 +70,7 @@ export class AddCommand implements Command {
                     continue;
                 }
 
-                // Normalize path - remove leading slash for git status
+                // Normalize path consistently - same as git add . 
                 const normalizedPath = filePath.startsWith("/") ? filePath.substring(1) : filePath;
 
                 // Stage the file (addFile normalizes the path internally)
